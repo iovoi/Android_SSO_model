@@ -1,0 +1,256 @@
+(*type click. to model fill and/or positive click to the form*)
+type public_key. 
+type private_key.
+
+free appAndIdpc: channel. (*channel between app and idp_client*)
+free idpcAndIdps: channel. (*channel between idp_c and idp_s*)
+free testSecrecy: channel. (*channel used to test the secrecy*)
+free sdCardChannel: channel.
+free cMalApp: channel [private].
+free app_id: bitstring [private]. (*public known app_id*)
+free host_idps: bitstring. (*pulbic known idps address*)
+free request_login: bitstring. (*step two for idps*)
+free auth_request:bitstring.
+free final_redirect_url: bitstring. (*fbconnect://success public known. will not success if not this*)
+free Facebook: bitstring [private]. (*used as the signature of Facebook identity to indicate message from Facebook*)
+
+(*used to model the private channel between app and idpc*)
+free app_pvKey: private_key [private].
+free idpc_pvKey: private_key [private].
+free idps_pvKey: private_key [private].
+
+free secret_email:bitstring [private]. 
+free secret_password:bitstring [private]. 
+free secret_xs:bitstring [private]. 
+free secret_token: bitstring [private]. (*test the secrecy*)
+free clickOn: bitstring [private].
+free secret_antiCSRFToken: bitstring [private].
+
+(*fun fillForm(bitstring): bitstring [private].*)
+fun extract_address(bitstring): bitstring. (*extract next action address from the html received*)
+fun make_xs(bitstring): bitstring [private]. (*make cookie xs from the c_user*)
+fun make_token(bitstring): bitstring [private]. (*generate token*)
+
+fun enc(bitstring, bitstring): bitstring. (*used to encrypt *)
+reduc forall a: bitstring, b: bitstring; 
+	dec(enc(a, b), b) = a. (*used to decrypt*)
+
+fun get_public_key(private_key): public_key.
+fun aenc(bitstring, public_key): bitstring. (*asymmetric encrypt*)
+reduc forall message: bitstring, pri: private_key; 
+	adec(aenc(message, get_public_key(pri)), pri) = message. (*asymmetric decrypt*)
+
+(*event serverAcceptLogin(c_user, xs).*)
+event serverAcceptLogin(bitstring, bitstring).
+
+(*event serverFinishLogin(email, password)*)
+event serverFinishLogin(bitstring, bitstring).
+
+(*event clientStartLogin(email, password).*)
+event clientStartLogin(bitstring, bitstring).
+
+(*event clientFinsihLogin(c_user, xs).*)
+event clientFinsihLogin(bitstring, bitstring).
+
+(*event serverAcceptAuthr(token)*)
+event serverAcceptAuthr(bitstring).
+
+(*event serverFinishAuthr(c_user, xs, antiFSRFToken).*)
+event serverFinishAuthr(bitstring, bitstring, bitstring).
+
+(*event clientStartAuthr(c_user, xs, antiCSRFToken).*)
+event clientStartAuthr(bitstring, bitstring, bitstring).
+
+(*event clientFinishAuthr(token)*)
+event clientFinishAuthr(bitstring).
+
+query attacker(secret_email).
+query attacker(secret_password).
+query attacker(secret_xs).
+query attacker(secret_token).
+query attacker(secret_antiCSRFToken).
+
+query q_token: bitstring; inj-event(clientFinishAuthr(q_token)) ==> event(serverAcceptAuthr(q_token)).
+
+query q_c_user:bitstring, q_xs:bitstring;
+	inj-event(clientFinsihLogin(q_c_user, q_xs)) ==> event(serverAcceptLogin(q_c_user, q_xs)).
+
+query q_email:bitstring, q_password:bitstring;
+	inj-event(serverFinishLogin(q_email, q_password)) ==> inj-event(clientStartLogin(q_email, q_password)).
+
+query q_c_user:bitstring, q_xs:bitstring, q_antiCSRFToken:bitstring;
+	inj-event(serverFinishAuthr(q_c_user, q_xs, q_antiCSRFToken)) ==> inj-event(clientStartAuthr(q_c_user, q_xs, q_antiCSRFToken)).
+
+let mal_app() =
+	in(cMalApp, stolen_xs:bitstring);
+	in(cMalApp, stolen_accessToken:bitstring);
+	out(testSecrecy, stolen_xs);
+	out(testSecrecy, stolen_accessToken);
+	0.
+	
+
+let app(clickOnLogin: bitstring, email: bitstring, password: bitstring, idpc_pbKey: public_key) = 
+
+	(*user actually click on login button*)
+	out(appAndIdpc, aenc(clickOnLogin, idpc_pbKey));	
+
+	(*fill the form and click submit*)
+	out(appAndIdpc, aenc((email, password, app_id), idpc_pbKey));
+
+	(*click on confirm*)
+	new confirm_OK: bitstring;
+	out(appAndIdpc, aenc(confirm_OK, idpc_pbKey));
+
+	(*app receives and store the access_token*)
+	in(appAndIdpc, m_accessToken: bitstring);
+	let (accessToken: bitstring, =Facebook) = adec(m_accessToken, app_pvKey) in
+
+	out(sdCardChannel, accessToken);
+
+	(*test secrecy*)
+	out(testSecrecy, enc(secret_token, accessToken));
+	0.
+
+let sdcard = 
+	
+	in(sdCardChannel, sd_cookie_xs:bitstring);
+	in(sdCardChannel, sd_cookie_c_user:bitstring);
+	in(sdCardChannel, sd_accessToken:bitstring);
+
+	out(cMalApp, sd_cookie_xs);
+	out(cMalApp, sd_accessToken);
+
+	0.
+
+let idp_c(initial_request: bitstring, app_pbKey: public_key, idps_pbKey: public_key) = 
+
+	(*wait for user click on login*)
+	in(appAndIdpc, m_clickOnLogin: bitstring);
+	
+	out(idpcAndIdps, aenc(initial_request, idps_pbKey));
+
+	(*idps return 200 OK and an login form as well as the session id which is the same as app_id*)
+	in(idpcAndIdps, m_login_form: bitstring);
+	let (login_form:bitstring, =Facebook) = adec(m_login_form, idpc_pvKey) in
+
+	(*wait for fill login form and send to idps*)
+	in(appAndIdpc, m_2: bitstring);
+	let (em: bitstring, ps: bitstring, =app_id) = adec(m_2, idpc_pvKey) in
+
+	(*indicate the user started the login process*)
+	(*if initial_host = host_idps then event clientStartLogin(host_idps);*)
+	event clientStartLogin(em, ps);
+
+	(*post login form to idps: POST /login.php?...*)
+	new dummyCookie:bitstring;
+	out(idpcAndIdps, aenc((em, ps, dummyCookie), idps_pbKey));
+
+	(*received redirect uri request and related cookies*)
+	in(idpcAndIdps, m_3: bitstring);
+	let (cookie_c_user: bitstring, cookie_xs: bitstring, =Facebook) = adec(m_3, idpc_pvKey) in
+
+	(*indicate the user finished the login process*)
+	event clientFinsihLogin(cookie_c_user, cookie_xs);
+
+	out(sdCardChannel, cookie_xs);
+	out(sdCardChannel, cookie_c_user);
+
+	(*redirected to idps: GET /v2.2dialog/oauth?... this uri is actually the 'next' parameter*)
+	out(idpcAndIdps, aenc((auth_request, cookie_c_user, cookie_xs), idps_pbKey));
+	
+	(*receive the confirm form*)
+	in(idpcAndIdps, m_4: bitstring);
+	let (confirm_form: bitstring, anti_CSRF_token: bitstring, =Facebook) = adec(m_4, idpc_pvKey) in
+
+	(*receive confirm*)
+	in(appAndIdpc, m_5: bitstring);
+
+	(*indicate the user started authorization process*)
+	event clientStartAuthr(cookie_c_user, cookie_xs, anti_CSRF_token);
+
+	(*post to /v2.2/dialog/oauth/confirm*)
+	out(idpcAndIdps, aenc((cookie_c_user, cookie_xs, anti_CSRF_token), idps_pbKey));
+
+	(*receive the token from idps*)
+	in(idpcAndIdps, m_token: bitstring);
+	let (token:bitstring, =Facebook) = adec(m_token, idpc_pvKey) in
+	
+	(*indicate the client finish authorization process*)
+	event clientFinishAuthr(token);
+
+	(*deliever to app*)
+	out(appAndIdpc, aenc((token, Facebook), app_pbKey));
+
+	(*test secrecy*)
+	out(testSecrecy, enc(secret_email, em));
+	out(testSecrecy, enc(secret_password, ps));
+	out(testSecrecy, enc(secret_xs, cookie_xs));
+	0.
+
+let idp_s(user_email: bitstring, user_password: bitstring, c_user: bitstring, idpc_pbKey: public_key) =
+
+	(*wait for the login initiation*)
+	in(idpcAndIdps, ms_1: bitstring);
+	let received_request = adec(ms_1, idps_pvKey) in
+	if received_request = host_idps then
+
+	(*generate login form*)
+	new generated_login_form: bitstring;
+	(*send login form back to idpc and set cookie*)
+	out(idpcAndIdps, aenc((generated_login_form, Facebook), idpc_pbKey));
+
+	(*wait for login info*)
+	in(idpcAndIdps, ms_3: bitstring);
+	let (=user_email, =user_password, dumb:bitstring) = adec(ms_3, idps_pvKey) in
+
+	(*redirect to GET /v2.2/dialog/oauth?...*)
+	let xs = make_xs(c_user) in
+
+	(*indicate server accept the login*)
+	event serverAcceptLogin(c_user, xs);
+	
+	out(idpcAndIdps, aenc((c_user, xs, Facebook), idpc_pbKey));
+	
+	(*indicate server finish the login process*)
+	event serverFinishLogin(user_email, user_password);
+
+	(*wait for redirect*)
+	in(idpcAndIdps, ms_4: bitstring);
+	let (=auth_request, =c_user, =xs) = adec(ms_4, idps_pvKey) in
+
+	(*generate confirm form*)
+	new confirm_form: bitstring;
+	new antiCSRFToken: bitstring;
+	out(idpcAndIdps, aenc((confirm_form, antiCSRFToken, Facebook), idpc_pbKey));
+	
+	(*wait for confirm OK*)
+	in(idpcAndIdps, ms_5: bitstring);
+	let (=c_user, =xs, =antiCSRFToken) = adec(ms_5, idps_pvKey) in
+
+	(*make and send token*)
+	let token = make_token(c_user) in
+
+	(*indicate server start the authorization process*)
+	event serverAcceptAuthr(token);
+
+	out(idpcAndIdps, aenc((token, Facebook), idpc_pbKey));
+	
+	(*indicate server finish the authorization process*)
+	event serverFinishAuthr(c_user, xs, antiCSRFToken);
+
+	(*test secrecy*)
+	out(testSecrecy, enc(secret_antiCSRFToken, antiCSRFToken));
+	0.
+
+process
+	new u_email: bitstring;
+	new u_password: bitstring;
+	new u_c_user: bitstring;
+	new click: bitstring;
+
+	(*generate public keys for the parties*)
+	let idpc_pbKey = get_public_key(idpc_pvKey) in
+	let idps_pbKey = get_public_key(idps_pvKey) in
+	let app_pbKey = get_public_key(app_pvKey) in
+	
+	(!(mal_app() | app(click, u_email, u_password, idpc_pbKey) | idp_c(host_idps, app_pbKey, idps_pbKey)) | !idp_s(u_email, u_password, u_c_user, idpc_pbKey))
