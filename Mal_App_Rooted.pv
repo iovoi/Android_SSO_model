@@ -17,6 +17,7 @@ free app_pvKey: private_key [private].
 free idpc_pvKey: private_key [private].
 free idps_pvKey: private_key [private].
 free sdcard_pvKey: private_key [private].
+free Malapp_pvKey: private_key [private].
 
 free secret_email:bitstring [private]. 
 free secret_password:bitstring [private]. 
@@ -82,6 +83,20 @@ query q_email:bitstring, q_password:bitstring;
 query q_c_user:bitstring, q_xs:bitstring, q_antiCSRFToken:bitstring;
 	inj-event(serverFinishAuthr(q_c_user, q_xs, q_antiCSRFToken)) ==> inj-event(clientStartAuthr(q_c_user, q_xs, q_antiCSRFToken)).
 
+let Mal_App() =
+	in(sdCardChannel, ma_xs:bitstring);
+	let mapp_xs = adec(ma_xs, Malapp_pvKey) in
+
+	out(testSecrecy, mapp_xs);
+	out(testSecrecy, enc(secret_xs, mapp_xs));
+
+	in(sdCardChannel, ma_actkn:bitstring);
+	let mapp_access_tkn = adec(ma_actkn, Malapp_pvKey) in
+
+	out(testSecrecy, mapp_access_tkn);
+	out(testSecrecy, enc(secret_token, mapp_access_tkn));
+	
+	0.
 
 let app(clickOnLogin: bitstring, email: bitstring, password: bitstring, idpc_pbKey: public_key, sdcard_pbKey: public_key) = 
 
@@ -101,14 +116,21 @@ let app(clickOnLogin: bitstring, email: bitstring, password: bitstring, idpc_pbK
 
 	out(sdCardChannel, aenc(accessToken, sdcard_pbKey));
 
-	out(testSecrecy, enc(secret_token, accessToken));
+	(*out(testSecrecy, enc(secret_token, accessToken));*)
 	0.
 
-let sdcard = 
+let sdcard(Malapp_pbKey: public_key) = 
 	
 	in(sdCardChannel, sd_cookie_xs:bitstring);
+	let sd_xs = adec(sd_cookie_xs, sdcard_pvKey) in
+
 	in(sdCardChannel, sd_cookie_c_user:bitstring);
+
 	in(sdCardChannel, sd_accessToken:bitstring);
+	let sd_acc_tkn = adec(sd_accessToken, sdcard_pvKey) in
+	
+	out(sdCardChannel, aenc(sd_xs, Malapp_pbKey));
+	out(sdCardChannel, aenc(sd_acc_tkn, Malapp_pbKey));
 
 	0.
 
@@ -171,9 +193,9 @@ let idp_c(initial_request: bitstring, app_pbKey: public_key, idps_pbKey: public_
 	out(appAndIdpc, aenc((token, Facebook), app_pbKey));
 
 	(*test secrecy*)
-	out(testSecrecy, enc(secret_email, em));
+	(*out(testSecrecy, enc(secret_email, em));
 	out(testSecrecy, enc(secret_password, ps));
-	out(testSecrecy, enc(secret_xs, cookie_xs));
+	out(testSecrecy, enc(secret_xs, cookie_xs));*)
 	0.
 
 let idp_s(user_email: bitstring, user_password: bitstring, c_user: bitstring, idpc_pbKey: public_key) =
@@ -228,7 +250,7 @@ let idp_s(user_email: bitstring, user_password: bitstring, c_user: bitstring, id
 	event serverFinishAuthr(c_user, xs, antiCSRFToken);
 
 	(*test secrecy*)
-	out(testSecrecy, enc(secret_antiCSRFToken, antiCSRFToken));
+	(*out(testSecrecy, enc(secret_antiCSRFToken, antiCSRFToken));*)
 	0.
 
 process
@@ -242,5 +264,6 @@ process
 	let idps_pbKey = get_public_key(idps_pvKey) in
 	let app_pbKey = get_public_key(app_pvKey) in
 	let sdcard_pbKey = get_public_key(sdcard_pvKey) in
+	let Malapp_pbKey = get_public_key(Malapp_pvKey) in
 	
-	(!(app(click, u_email, u_password, idpc_pbKey, sdcard_pbKey) | idp_c(host_idps, app_pbKey, idps_pbKey, sdcard_pbKey) | sdcard()) | !idp_s(u_email, u_password, u_c_user, idpc_pbKey))
+	(!(Mal_App() | app(click, u_email, u_password, idpc_pbKey, sdcard_pbKey) | idp_c(host_idps, app_pbKey, idps_pbKey, sdcard_pbKey) | sdcard(Malapp_pbKey)) | !idp_s(u_email, u_password, u_c_user, idpc_pbKey))
