@@ -4,7 +4,7 @@ type private_key.
 free appAndIdpc: channel. (*channel between app and idp_client*)
 free idpcAndIdps: channel. (*channel between idp_c and idp_s*)
 free testSecrecy: channel. (*channel used to test the secrecy*)
-free sdCardChannel: channel.
+free localStorageChannel: channel.
 free app_id: bitstring [private]. (*public known app_id*)
 free host_idps: bitstring. (*pulbic known idps address*)
 free request_login: bitstring. (*step two for idps*)
@@ -16,7 +16,7 @@ free Facebook: bitstring [private]. (*used as the signature of Facebook identity
 free app_pvKey: private_key [private].
 free idpc_pvKey: private_key [private].
 free idps_pvKey: private_key [private].
-free sdcard_pvKey: private_key [private].
+free localStorage_pvKey: private_key [private].
 
 free secret_email:bitstring [private]. 
 free secret_password:bitstring [private]. 
@@ -85,7 +85,7 @@ query q_c_user:bitstring, q_xs:bitstring, q_antiCSRFToken:bitstring;
 let Mal_App() =
 	0.
 
-let app(clickOnLogin: bitstring, email: bitstring, password: bitstring, idpc_pbKey: public_key, sdcard_pbKey: public_key) = 
+let app(clickOnLogin: bitstring, email: bitstring, password: bitstring, idpc_pbKey: public_key, localStorage_pbKey: public_key) = 
 
 	(*user actually click on login button*)
 	out(appAndIdpc, aenc(clickOnLogin, idpc_pbKey));	
@@ -101,20 +101,20 @@ let app(clickOnLogin: bitstring, email: bitstring, password: bitstring, idpc_pbK
 	in(appAndIdpc, m_accessToken: bitstring);
 	let (accessToken: bitstring, =Facebook) = adec(m_accessToken, app_pvKey) in
 
-	out(sdCardChannel, aenc(accessToken, sdcard_pbKey));
+	out(localStorageChannel, aenc(accessToken, localStorage_pbKey));
 
 	(*out(testSecrecy, enc(secret_token, accessToken));*)
 	0.
 
-let sdcard = 
+let localStorage = 
 	
-	in(sdCardChannel, sd_cookie_xs:bitstring);
-	in(sdCardChannel, sd_cookie_c_user:bitstring);
-	in(sdCardChannel, sd_accessToken:bitstring);
+	in(localStorageChannel, sd_cookie_xs:bitstring);
+	in(localStorageChannel, sd_cookie_c_user:bitstring);
+	in(localStorageChannel, sd_accessToken:bitstring);
 
 	0.
 
-let idp_c(initial_request: bitstring, app_pbKey: public_key, idps_pbKey: public_key, sdcard_pbKey: public_key) = 
+let idp_c(initial_request: bitstring, app_pbKey: public_key, idps_pbKey: public_key, localStorage_pbKey: public_key) = 
 
 	(*wait for user click on login*)
 	in(appAndIdpc, m_clickOnLogin: bitstring);
@@ -143,8 +143,8 @@ let idp_c(initial_request: bitstring, app_pbKey: public_key, idps_pbKey: public_
 	(*indicate the user finished the login process*)
 	event clientFinsihLogin(cookie_c_user, cookie_xs);
 
-	out(sdCardChannel, aenc(cookie_xs, sdcard_pbKey));
-	out(sdCardChannel, aenc(cookie_c_user, sdcard_pbKey));
+	out(localStorageChannel, aenc(cookie_xs, localStorage_pbKey));
+	out(localStorageChannel, aenc(cookie_c_user, localStorage_pbKey));
 
 	(*redirected to idps: GET /v2.2dialog/oauth?... this uri is actually the 'next' parameter*)
 	out(idpcAndIdps, aenc((auth_request, cookie_c_user, cookie_xs), idps_pbKey));
@@ -243,6 +243,6 @@ process
 	let idpc_pbKey = get_public_key(idpc_pvKey) in
 	let idps_pbKey = get_public_key(idps_pvKey) in
 	let app_pbKey = get_public_key(app_pvKey) in
-	let sdcard_pbKey = get_public_key(sdcard_pvKey) in
+	let localStorage_pbKey = get_public_key(localStorage_pvKey) in
 	
-	(!(Mal_App() | app(click, u_email, u_password, idpc_pbKey, sdcard_pbKey) | idp_c(host_idps, app_pbKey, idps_pbKey, sdcard_pbKey) | sdcard()) | !idp_s(u_email, u_password, u_c_user, idpc_pbKey))
+	(!(Mal_App() | app(click, u_email, u_password, idpc_pbKey, localStorage_pbKey) | idp_c(host_idps, app_pbKey, idps_pbKey, localStorage_pbKey) | localStorage()) | !idp_s(u_email, u_password, u_c_user, idpc_pbKey))
