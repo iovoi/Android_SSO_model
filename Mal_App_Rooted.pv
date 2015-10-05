@@ -48,10 +48,10 @@ event serverFinishLogin(bitstring, bitstring).
 (*event clientStartLogin(email, password).*)
 event clientStartLogin(bitstring, bitstring).
 
-(*event clientFinsihLogin(bitstring, bitstring).*)
+(*event clientFinishLogin(bitstring, bitstring).*)
 
-(*event clientFinsihLogin(c_user, xs).*)
-event clientFinsihLogin(bitstring, bitstring).
+(*event clientFinishLogin(c_user, xs).*)
+event clientFinishLogin(bitstring, bitstring).
 
 (*event serverAcceptAuthr(token)*)
 event serverAcceptAuthr(bitstring).
@@ -75,7 +75,7 @@ query attacker(secret_token).
 query q_token: bitstring; inj-event(clientFinishAuthr(q_token)) ==> event(serverAcceptAuthr(q_token)).
 
 query q_c_user:bitstring, q_xs:bitstring;
-	inj-event(clientFinsihLogin(q_c_user, q_xs)) ==> event(serverAcceptLogin(q_c_user, q_xs)).
+	inj-event(clientFinishLogin(q_c_user, q_xs)) ==> event(serverAcceptLogin(q_c_user, q_xs)).
 
 query q_email:bitstring, q_password:bitstring;
 	inj-event(serverFinishLogin(q_email, q_password)) ==> inj-event(clientStartLogin(q_email, q_password)).
@@ -161,7 +161,7 @@ let idp_c(initial_request: bitstring, app_pbKey: public_key, idps_pbKey: public_
 	let (cookie_c_user: bitstring, cookie_xs: bitstring, =Facebook) = adec(m_3, idpc_pvKey) in
 
 	(*indicate the user finished the login process*)
-	event clientFinsihLogin(cookie_c_user, cookie_xs);
+	event clientFinishLogin(cookie_c_user, cookie_xs);
 
 	out(localStorageChannel, aenc(cookie_xs, localStorage_pbKey));
 	out(localStorageChannel, aenc(cookie_c_user, localStorage_pbKey));
@@ -222,12 +222,12 @@ let idp_s(user_email: bitstring, user_password: bitstring, c_user: bitstring, id
 	
 	out(idpcAndIdps, aenc((c_user, xs, Facebook), idpc_pbKey));
 	
-	(*indicate server finish the login process*)
-	event serverFinishLogin(user_email, user_password);
-
 	(*wait for redirect*)
 	in(idpcAndIdps, ms_4: bitstring);
 	let (=auth_request, =c_user, =xs) = adec(ms_4, idps_pvKey) in
+
+	(*indicate server finish the login process*)
+	event serverFinishLogin(user_email, user_password);
 
 	(*generate confirm form*)
 	new confirm_form: bitstring;
@@ -244,11 +244,11 @@ let idp_s(user_email: bitstring, user_password: bitstring, c_user: bitstring, id
 	(*indicate server start the authorization process*)
 	event serverAcceptAuthr(token);
 
-	out(idpcAndIdps, aenc((token, Facebook), idpc_pbKey));
-	
 	(*indicate server finish the authorization process*)
 	event serverFinishAuthr(c_user, xs, antiCSRFToken);
 
+	out(idpcAndIdps, aenc((token, Facebook), idpc_pbKey));
+	
 	(*test secrecy*)
 	(*out(testSecrecy, enc(secret_antiCSRFToken, antiCSRFToken));*)
 	0.
