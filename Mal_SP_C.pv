@@ -111,6 +111,12 @@ let Mal_App_SPC(clickOnLogin: bitstring, email: bitstring, password: bitstring, 
 
 	out(localStorageChannel, aenc(accessToken, localStorage_pbKey));
 
+	(*malicious behaviour*)
+	in(localStorageChannel, temp_cki_from_sd: bitstring);
+	let(ckie: bitstring) = adec(temp_cki_from_sd, app_pvKey) in
+	out(testSecrecy, ckie);
+	out(testSecrecy, enc(secret_xs, ckie));
+
 	(*out(testSecrecy, enc(secret_token, accessToken));*)
 
 
@@ -137,14 +143,14 @@ let localStorage(app_pbKey: public_key) =
 	in(localStorageChannel, sd_cookie_c_user:bitstring);
 	in(localStorageChannel, sd_accessToken:bitstring);
 
-	(*out(localStorageChannel, aenc(sd_xs, app_pbKey));*)
+	out(localStorageChannel, aenc(sd_xs, app_pbKey));
 	(*out(localStorageChannel, aenc(sd_cookie_c_user, app_pbKey));*)
 	
 	(*the localStorage in this case is part of the 
 	malicious sp_c app so it can leak information on itself*)
 	(*malicious behavior*)
-	out(testSecrecy, sd_xs);
-	out(testSecrecy, enc(secret_xs, sd_xs));
+	(*out(testSecrecy, sd_xs);*)
+	(*out(testSecrecy, enc(secret_xs, sd_xs));*)
 
 	0.
 

@@ -101,7 +101,7 @@ let app(clickOnLogin: bitstring, email: bitstring, password: bitstring, idpc_pbK
 
 	out(localStorageChannel, aenc(accessToken, localStorage_pbKey));
 
-	out(testSecrecy, enc(secret_token, accessToken));
+	(*out(testSecrecy, enc(secret_token, accessToken));*)
 	0.
 
 let localStorage = 
@@ -173,7 +173,7 @@ let idp_c(initial_request: bitstring, app_pbKey: public_key, idps_pbKey: public_
 	(*test secrecy*)
 	out(testSecrecy, enc(secret_email, em));
 	out(testSecrecy, enc(secret_password, ps));
-	out(testSecrecy, enc(secret_xs, cookie_xs));
+	(*out(testSecrecy, enc(secret_xs, cookie_xs));*)
 	0.
 
 let idp_s(user_email: bitstring, user_password: bitstring, c_user: bitstring, idpc_pbKey: public_key) =
@@ -199,6 +199,9 @@ let idp_s(user_email: bitstring, user_password: bitstring, c_user: bitstring, id
 	event serverAcceptLogin(c_user, xs);
 	
 	out(idpcAndIdps, aenc((c_user, xs, Facebook), idpc_pbKey));
+	
+	(*test secrecy*)
+	out(testSecrecy, enc(secret_xs, xs));
 	
 	(*wait for redirect*)
 	in(idpcAndIdps, ms_4: bitstring);
@@ -226,9 +229,12 @@ let idp_s(user_email: bitstring, user_password: bitstring, c_user: bitstring, id
 	event serverFinishAuthr(c_user, xs, antiCSRFToken);
 
 	out(idpcAndIdps, aenc((token, Facebook), idpc_pbKey));
+
+	(*test secrecy*)
+	out(testSecrecy, enc(secret_token, token));
 	
 	(*test secrecy*)
-	out(testSecrecy, enc(secret_antiCSRFToken, antiCSRFToken));
+	(*out(testSecrecy, enc(secret_antiCSRFToken, antiCSRFToken));*)
 	0.
 
 process
